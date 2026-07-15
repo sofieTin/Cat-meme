@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Cat Meme</title>
+  <style>
+    @font-face { font-family: "Butterpop"; src: url("assets/Fonts/Butterpop.otf") format("opentype");} 
+    @font-face { font-family: "BlueWater"; src: url("assets/Fonts/Blue\ Water.otf") format("opentype")}
+
+    body { margin: 0; overflow: hidden; background: lightblue; }
+    canvas { display: block; width: 100%; height: auto; max-width: 500px; aspect-ratio: 1 / 2;}
+
+    .bar { background-color: lightseagreen; font-size: 40px; color: rgb(25, 68, 66);; display: flex; justify-content: center; align-items: center;font-family: "BlueWater"; gap: 20px;}
+    
+    .main { display: flex; justify-content: space-around; align-items: flex-start; gap: 20px; padding: 20px;}
+    .main p { text-align: center; font-family: "Butterpop"; }
+    .camera-side, .meme-side { max-width: 48%; flex: 1;}
+    hr { border: none; border-top: 2px solid rgb(25, 68, 66); width: 80%; margin: 10px auto; }
+    #camera-container { margin: 20px auto; display: flex; justify-content: center; align-items: center; }
+    #meme-box { margin: 20px auto; width: 500px; height: 300px; background: rgb(143, 206, 203); border: 2px solid rgb(132, 199, 196); border-radius: 12px; margin-top: 20px; }
+    
+    .ideas { text-align: center; margin-top: 20px }
+    .ideas p { margin-bottom: 15px; font-family: "Butterpop"; font-size: 18px; }
+    .ideas img { display: inline-block; margin: 10px; }
+
+    #btn-fahh { margin-left: 20px; border-radius: 12px; height: 50px; width: auto; background-color: rgb(132, 199, 196); border-color: rgb(25, 68, 66); font-family: "Butterpop"; font-size: medium;}
+    #fullscreenFAHHcat { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: none; justify-content: center; align-items: center; z-index: 9999; background: rgba(0,0,0,0.8); }
+    #fullscreenFAHHcat img { max-width: 100%; max-height: 100%; object-fit: contain; }
+  </style>
+
+  <!-- MediaPipe Hands -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+  <!-- p5.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+</head>
+
+<body>
+  <script>
+    let videoElement;
+    let handsResults = [];
+
+    function setup() {
+      let canvas = createCanvas(400, 300);
+      canvas.parent("camera-container");
+
+      videoElement = createCapture(VIDEO);
+      videoElement.size(width, height);
+      videoElement.hide()
+      videoElement.elt.setAttribute("playsinline", "");
+
+      // -----------------------------
+      // SETUP MEDIAPIPE HANDS
+      // -----------------------------
+      const hands = new Hands({
+        locateFile: (file) => {
+          return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }
+      });
+
+      hands.setOptions({
+        maxNumHands: 2,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.7,
+        minTrackingConfidence: 0.7
+      });
+
+      hands.onResults((results) => {
+        handsResults = results.multiHandLandmarks || [];
+      });
+
+      const camera = new Camera(videoElement.elt, {
+        onFrame: async () => {
+          await hands.send({ image: videoElement.elt });
+        },
+        width: width,
+        height: height
+      });
+
+      camera.start();
+    }
+
+    function draw() {
+      background(0);
+
+      push();
+      translate(width, 0);
+      scale(-1, 1); // mirror everything
+
+      image(videoElement, 0, 0, width, height);
+
+      // -----------------------------
+      // DRAW FINGER TIP + BASE DOTS
+      // -----------------------------
+      for (let hand of handsResults) {
+
+        // MediaPipe landmark indices:
+        // Thumb: 1 (base), 4 (tip)
+        // Index: 5 (base), 8 (tip)
+        // Middle: 9 (base), 12 (tip)
+        // Ring: 13 (base), 16 (tip)
+        // Pinky: 17 (base), 20 (tip)
+
+        let fingerPairs = [
+          [1, 4],
+          [5, 8],
+          [9, 12],
+          [13, 16],
+          [17, 20]
+        ];
+
+        fill(255, 0, 0);
+        noStroke();
+
+        for (let [baseIdx, tipIdx] of fingerPairs) {
+          let base = hand[baseIdx];
+          let tip = hand[tipIdx];
+
+          if (base && tip) {
+            ellipse(base.x * width, base.y * height, 12);
+            ellipse(tip.x * width, tip.y * height, 12);
+          }
+        }
+      }
+      pop();
+      detector()
+    }
+
+    function isFingerUp(hand, tip, pip) {
+      return hand[tip].y < hand[pip].y;
+    }
+
+    function isHandOpen(hand) {
+      const thumb  = isFingerUp(hand, 4, 3);
+      const index  = isFingerUp(hand, 8, 6);
+      const middle = isFingerUp(hand, 12, 10);
+      const ring   = isFingerUp(hand, 16, 14);
+      const pinky  = isFingerUp(hand, 20, 18);
+
+      return thumb && index && middle && ring && pinky;
+    }
+
+    function isPalmFacingUp(hand) {
+      const wrist = hand[0];
+      const midKnuckle = hand[9];
+      const midTip = hand[12];
+
+      if (!wrist || !midKnuckle || !midTip) return false;
+
+      const fingersOpen = isHandOpen(hand);
+
+      const wristBelowKnuckle = wrist.y > midKnuckle.y;
+      const knuckleBelowTip = midKnuckle.y > midTip.y;
+
+      return fingersOpen && wristBelowKnuckle && knuckleBelowTip;
+    } 
+
+    function isHandUp(hand) {
+      const wrist = hand[0];
+      if (!wrist) return false;
+
+      return wrist.y < 0.40; // top 40% of the frame
+    }
+
+    function isPalmFacingCamera(hand) {
+      const tip = hand[12]; // middle fingertip
+      const pip = hand[10]; // middle finger joint
+
+      if (!tip || !pip) return false;
+
+      return tip.z < pip.z; // tip closer to camera
+    }
+
+    function isPalmFacingCamera(hand) {
+      const tip = hand[12];
+      const pip = hand[10];
+      if (!tip || !pip) return false;
+      return tip.z < pip.z;
+    }
+    
+    function isPointing(hand) {
+      const indexUp = isFingerUp(hand, 8, 6);
+      const middleUp = isFingerUp(hand, 12, 10);
+      const ringUp = isFingerUp(hand, 16, 14);
+      const pinkyUp = isFingerUp(hand, 20, 18);
+      const thumbUp = isFingerUp(hand, 4, 3);
+
+      // Pointing = index up, others down
+      return indexUp && !middleUp && !ringUp && !pinkyUp;
+    }
+
+    function oneHandPointing(hands) {
+      if (hands.length === 0) return false;
+
+      let pointingHands = 0;
+
+      for (let hand of hands) {
+        if (isPointing(hand)) pointingHands++;
+      }
+
+      return pointingHands === 1;
+    }
+
+    function isIndexVertical(hand) {
+      const base = hand[5];
+      const pip  = hand[6];
+      const tip  = hand[8];
+
+      if (!base || !pip || !tip) return false;
+
+      const vertical = tip.y < pip.y && pip.y < base.y;
+      const alignedX = Math.abs(tip.x - base.x) < 0.05;
+
+      return vertical && alignedX;
+    }
+
+    function isNearMouth(hand) {
+      const tip = hand[8];
+      if (!tip) return false;
+
+      const nearY = tip.y > 0.40 && tip.y < 0.65;
+      const nearX = tip.x > 0.35 && tip.x < 0.65;
+
+      return nearY && nearX;
+    }
+
+    function isFarFromMouth(hand) {
+      const tip = hand[8];
+      if (!tip) return false;
+
+      // Finger must be OUTSIDE the mouth zone
+      const farY = tip.y < 0.40 || tip.y > 0.70;
+      const farX = tip.x < 0.30 || tip.x > 0.70;
+
+      return farY || farX;
+    }
+
+    function otherFingersCurled(hand) {
+      const middleUp = isFingerUp(hand, 12, 10);
+      const ringUp   = isFingerUp(hand, 16, 14);
+      const pinkyUp  = isFingerUp(hand, 20, 18);
+
+      return !middleUp && !ringUp && !pinkyUp;
+    }
+
+
+    function chillPose(hand) {
+      const thumbUp  = isFingerUp(hand, 4, 3);
+      const pinkyUp  = isFingerUp(hand, 20, 18);
+
+      const indexUp  = isFingerUp(hand, 8, 6);
+      const middleUp = isFingerUp(hand, 12, 10);
+      const ringUp   = isFingerUp(hand, 16, 14);
+
+      return thumbUp && pinkyUp && !indexUp && !middleUp && !ringUp;
+    }
+
+    function confusedPose(hands) {
+      if (hands.length < 2) return false;
+
+      const h1 = hands[0];
+      const h2 = hands[1];
+
+      // Hands LOW
+      const low1 = h1[0].y > 0.60;
+      const low2 = h2[0].y > 0.60;
+
+      if (!low1 || !low2) return false;
+
+      // Palms facing UP
+      const up1 = isPalmFacingUp(h1);
+      const up2 = isPalmFacingUp(h2);
+
+      if (!up1 || !up2) return false;
+
+      // Hands separated sideways
+      const x1 = h1[0].x;
+      const x2 = h2[0].x;
+      const separated = Math.abs(x1 - x2) > 0.20;
+
+      return separated;
+    }
+
+    function handsUpPose(hands) {
+      if (hands.length < 2) return false;
+
+      const h1 = hands[0];
+      const h2 = hands[1];
+
+      // Hands MID
+      const mid1 = h1[0].y > 0.30 && h1[0].y < 0.60;
+      const mid2 = h2[0].y > 0.30 && h2[0].y < 0.60;
+
+      if (!mid1 || !mid2) return false;
+
+      // Palms facing camera
+      const palm1 = isPalmFacingCamera(h1);
+      const palm2 = isPalmFacingCamera(h2);
+
+      if (!palm1 || !palm2) return false;
+
+      // Fingers open
+      const open1 = isHandOpen(h1);
+      const open2 = isHandOpen(h2);
+
+      return open1 && open2;
+    }
+
+    function pointingPose(hands) {
+      if (hands.length === 0) return false;
+
+      let pointingHands = 0;
+
+      for (let hand of hands) {
+        const indexUp = isFingerUp(hand, 8, 6);
+        const middleUp = isFingerUp(hand, 12, 10);
+        const ringUp = isFingerUp(hand, 16, 14);
+        const pinkyUp = isFingerUp(hand, 20, 18);
+
+        const isPointing = indexUp && !middleUp && !ringUp && !pinkyUp;
+
+        if (isPointing && isFarFromMouth(hand)) {
+          pointingHands++;
+        }
+      }
+
+      return pointingHands === 1;
+    }
+
+
+    function shushPose(hands) {
+      if (hands.length === 0) return false;
+
+      let shushingHands = 0;
+
+      for (let hand of hands) {
+        const vertical = isIndexVertical(hand);
+        const nearMouth = isNearMouth(hand);
+        const curled = otherFingersCurled(hand);
+
+        if (vertical && nearMouth && curled) {
+          shushingHands++;
+        }
+      }
+
+      return shushingHands === 1; // only one hand should shush
+    }
+
+    function thumbsUpPose(hand) {
+      if (!hand) return false;
+
+      // Thumb extended upward
+      const thumbUp = hand[4].y < hand[3].y;
+
+      // Other fingers curled
+      const indexDown  = hand[8].y > hand[6].y;
+      const middleDown = hand[12].y > hand[10].y;
+      const ringDown   = hand[16].y > hand[14].y;
+      const pinkyDown  = hand[20].y > hand[18].y;
+
+      const othersCurled = indexDown && middleDown && ringDown && pinkyDown;
+
+      // Hand vertical-ish (thumb above wrist)
+      const wristBelowThumb = hand[0].y > hand[4].y;
+
+      return thumbUp && othersCurled && wristBelowThumb;
+    }
+
+
+    function detector() {
+      for (let hand of handsResults) {
+        if (chillPose(hand)) {
+          document.getElementById("meme-box").innerHTML =
+            `<img src="assets/chill.gif" style="width:100%; height:100%; object-fit:contain">`;
+          return;
+        }
+      }
+
+      for (let hand of handsResults) {
+        if (thumbsUpPose(hand)) {
+          document.getElementById("meme-box").innerHTML =
+            `<img src="assets/thumbs-up.jpg" style="width:100%; height:100%; object-fit:contain">`;
+          return;
+        }
+      }
+
+      if (confusedPose(handsResults)) {
+        document.getElementById("meme-box").innerHTML =
+          `<img src="assets/confused.gif" style="width:100%; height:100%; object-fit:contain">`;
+        return;
+      }
+      if (handsUpPose(handsResults)) {
+        document.getElementById("meme-box").innerHTML =
+          `<img src="assets/hands-up.jpg" style="width:100%; height:100%; object-fit:contain">`;
+        return;
+      }
+      if (pointingPose(handsResults)) {
+        document.getElementById("meme-box").innerHTML =
+          `<img src="assets/pointing.jpg" style="width:100%; height:100%; object-fit:contain">`;
+        return;
+      }
+      if (shushPose(handsResults)) {
+        document.getElementById("meme-box").innerHTML =
+          `<img src="assets/shush.png" style="width:100%; height:100%; object-fit:contain">`;
+        return;
+      }
+
+      // Default
+      document.getElementById("meme-box").innerHTML =
+        `<img src="assets/straight-face.jpg" style="width:100%; height:100%; object-fit:contain">`;
+    }
+
+
+  </script>
+
+
+  <div class="bar" id="bar">
+    <img src="assets/Icons/cat-paw.png" width="70px" height="70px">
+    <p>CAT MEME DETECTOR</p>
+  </div>
+
+  <div class="main">
+    <div class="camera-side">
+      <p>Camera Preview</p>
+      <hr>
+      <div id="camera-container"></div>
+    </div>
+
+    <div class="meme-side">
+      <p>Meme Display</p>
+      <hr>
+      <div id="meme-box"></div>
+    </div>
+  </div>
+
+  <div class="ideas">
+    <p>If you have no ideas try those : </p>
+    <img src="assets/Icons/yolo.png">
+    <img src="assets/Icons/shush.png">
+    <img src="assets/Icons/pointing.png">
+    <img src="assets/Icons/thumbsup.png" height="55px">
+  </div>
+  
+  <button id="btn-fahh">Don't click it!</button>
+  <p style="margin-left: 20px; color: lightslategray">pssst sound on</p>
+  <audio id="snd-fahh" src="assets/Sounds/FAAAH - QuickSounds.com.mp3"></audio>
+  <div id="fullscreenFAHHcat"></div>
+  <script>
+    document.getElementById("btn-fahh").addEventListener("click", () => {
+      const sound = document.getElementById("snd-fahh");
+      const box = document.getElementById("fullscreenFAHHcat");
+
+      box.innerHTML = `<img src="assets/fah.png">`;
+      box.style.display = "flex";
+
+      sound.currentTime = 0;
+      sound.play();
+
+      sound.onended = () => {
+        box.style.display = "none";
+        box.innerHTML = "";
+      };
+    });
+  </script>
+
+</body>
+</html>
